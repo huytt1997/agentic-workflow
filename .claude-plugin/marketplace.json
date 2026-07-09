@@ -1,0 +1,8 @@
+{
+  "name": "agentic-workflow",
+  "owner": { "name": "agentic-workflow" },
+  "plugins": [
+    { "name": "agentic-core", "source": "./packages/agentic-core" },
+    { "name": "agentic-engineer", "source": "./packages/agentic-engineer" }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "agentic-engineer",
+  "description": "Single-feature P0-P5 pipeline: worktree, plan, execute, qa, review, lifecycle.",
+  "version": "0.1.0",
+  "dependencies": ["agentic-core"]
+}

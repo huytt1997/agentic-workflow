@@ -1,0 +1,13 @@
+{
+  "_comment": "Best-effort lifecycle marker: fired by the orchestrator SOP at P5 worktree cleanup. Not a Claude Code core hook event; inert placeholder only. Fire-and-forget, always exits 0 (I-8), resolves its own path via ${CLAUDE_PLUGIN_ROOT} only (I-9).",
+  "WorktreeRemove": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash -c 'echo \"{\\\"event\\\":\\\"WorktreeRemove\\\"}\" >/dev/null 2>&1; exit 0'"
+        }
+      ]
+    }
+  ]
+}

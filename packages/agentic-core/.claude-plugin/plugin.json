@@ -1,0 +1,5 @@
+{
+  "name": "agentic-core",
+  "description": "Shared kernel: safety, verification, observability, state/checkpoint/profile.",
+  "version": "0.1.0"
+}

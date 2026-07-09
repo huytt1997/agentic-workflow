@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec bash "${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}/lib/profile.sh" "$@"

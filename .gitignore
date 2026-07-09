@@ -1,2 +1,6 @@
 # secret
 .envrc
+
+# npm fixture (installed on demand, never committed)
+tests/fixtures/npm-sample/node_modules/
+tests/fixtures/npm-sample/package-lock.json
