@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# TEST-ONLY stub of the OpenSpec CLI. Mimics the §2.4 surface just enough for
+# fixture-level tests. Live acceptance against the real `openspec` binary is
+# DEFERRED (see .agentic/plans/00-overview.md decision D-A).
+set -uo pipefail
+root="${AGENTIC_PROJECT_ROOT:-$PWD}"
+cmd="${1:-}"; id="${2:-}"
+case "$cmd" in
+  validate)
+    [ -f "$root/openspec/changes/$id/proposal.md" ] && exit 0 || { echo "validate: no change $id" >&2; exit 1; } ;;
+  archive)
+    src="$root/openspec/changes/$id"
+    [ -d "$src" ] || { echo "archive: no change $id" >&2; exit 1; }
+    mkdir -p "$root/openspec/changes/archive" || exit 1
+    mv "$src" "$root/openspec/changes/archive/$id" || exit 1
+    exit 0 ;;
+  *) echo "stub openspec: unsupported '$cmd'" >&2; exit 2 ;;
+esac

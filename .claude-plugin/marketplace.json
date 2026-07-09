@@ -3,6 +3,7 @@
   "owner": { "name": "agentic-workflow" },
   "plugins": [
     { "name": "agentic-core", "source": "./packages/agentic-core" },
-    { "name": "agentic-engineer", "source": "./packages/agentic-engineer" }
+    { "name": "agentic-engineer", "source": "./packages/agentic-engineer" },
+    { "name": "agentic-management", "source": "./packages/agentic-management" }
   ]
 }

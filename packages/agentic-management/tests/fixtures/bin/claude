@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# TEST-ONLY stub engineer: a fake `claude -p` that emulates one agentic-engineer
+# auto run by writing the pm-outcome/1 contract file, then printing a cost line.
+# Real `claude -p` engineer runs are DEFERRED (see 00-overview.md decision D-B).
+#
+# Convention for later plans (02-pm-runner, 05-integration) to drive outcomes:
+#   STUB_OUTCOME_STATUS  - success|needs_human|failed (default: success)
+#   STUB_COST_USD        - printed in the {"total_cost_usd":...} stdout line (default: 0.01)
+#   STUB_LARGE_PASSED    - set to "false" to force verification.large_passed=false even on
+#                          success (used to drive the contract-violation routing path)
+#   STUB_EXIT_CODE       - process exit code (default: 0)
+#   AGENTIC_PM_OUTCOME_FILE - path this stub writes the pm-outcome/1 JSON record to
+set -uo pipefail
+status="${STUB_OUTCOME_STATUS:-success}"
+cost="${STUB_COST_USD:-0.01}"
+out="${AGENTIC_PM_OUTCOME_FILE:-}"
+if [ -n "$out" ]; then
+  mkdir -p "$(dirname "$out")"
+  large=false; [ "$status" = "success" ] && large=true
+  # large_passed override for the contract-violation test path:
+  [ "${STUB_LARGE_PASSED:-}" = "false" ] && large=false
+  cid="$(basename "$out" .json)"
+  jq -n --arg s "$status" --arg c "$cid" --argjson l "$large" \
+    '{schema:"pm-outcome/1",change_id:$c,status:$s,reason:null,checkpoints:1,pr:null,
+      ts:(now|todate),verification:{large_passed:$l,tests_written:1,levels:["component"]}}' > "$out"
+fi
+printf '{"total_cost_usd":%s}\n' "$cost"
+exit "${STUB_EXIT_CODE:-0}"
