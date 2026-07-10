@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-# structure_test.sh — structural proof for the agentic-engineer plugin scaffold.
-# Feature `engineer-loads`: plugin.json valid + correctly named, /engineer command
-# exists, and the root marketplace registers agentic-engineer.
+# structure_test.sh — structural proof for the agentic-engineer scaffold.
+# Feature `engineer-loads`: the /engineer command + engineer-hooks.json exist and are valid
+# (plugin.json / marketplace registration retired with the Claude-plugin install mechanism).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"; . "$ROOT/tests/lib/assert.sh"
 PP="$ROOT/packages/agentic-engineer"
 
-assert_exit 0 "$(jq -e . "$PP/.claude-plugin/plugin.json" >/dev/null 2>&1 && echo 0 || echo 1)" "engineer plugin.json valid"
-assert_eq "agentic-engineer" "$(jq -r .name "$PP/.claude-plugin/plugin.json")" "engineer plugin.json named agentic-engineer"
 assert_exit 0 "$( [ -f "$PP/commands/engineer.md" ] && echo 0 || echo 1 )" "engineer command exists"
 assert_exit 0 "$(jq -e . "$PP/hooks/engineer-hooks.json" >/dev/null 2>&1 && echo 0 || echo 1)" "engineer-hooks.json valid"
-assert_exit 0 "$(jq -e '.plugins[] | select(.name=="agentic-engineer")' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 && echo 0 || echo 1)" "marketplace lists agentic-engineer"
 
 # Feature `orchestrator-sop`: the P0-P5 SOP with the interactive/auto mode split (T-E1..E6,E10).
 SK="$PP/skills/agentic-engineer/SKILL.md"

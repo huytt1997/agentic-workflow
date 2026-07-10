@@ -1,6 +1,0 @@
-{
-  "name": "agentic-management",
-  "description": "BA + PM automation over OpenSpec: docs->changes and a deterministic engineer outer loop.",
-  "version": "0.1.0",
-  "dependencies": ["agentic-core", "agentic-engineer"]
-}
