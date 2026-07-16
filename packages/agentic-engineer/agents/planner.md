@@ -38,3 +38,19 @@ Name these skills exactly; do not substitute or invent alternates.
 - **English artifacts, kebab-case naming** for every file/task name it produces.
 - It writes plans and assumption docs only — never feature code, never test files, never review
   commentary.
+
+## The e2e plan (feature `e2e-plan-gate`)
+
+After `lib/detect-verify.sh` returns, check `verify_cmds.e2e`.
+
+**Non-null — the project has an e2e runner:** decide the e2e scenarios LARGE verify will assert and
+record each with `agentic-state e2e-plan-add "<scenario>"`. Derive them from the OpenSpec change's
+acceptance criteria (auto mode) or from the brainstorm (interactive). Every scenario must be
+**observable** — a user-visible behaviour or a checkable output. "Export works correctly" is not a
+scenario; "Given a report with rows, clicking Export downloads a .csv whose first line is a header
+row" is. `qa` implements exactly these at P3, so a vague scenario becomes a vague test.
+
+**Null — no e2e runner:** record nothing and proceed.
+
+This is gated: on an e2e-capable project the P1 gate will not let the run reach P2 with an empty
+`e2e_plan`. That is deliberate — e2e acceptance is a precondition of writing code, not an afterthought.

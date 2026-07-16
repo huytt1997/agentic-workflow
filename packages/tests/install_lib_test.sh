@@ -17,45 +17,52 @@ ic_resolve_target "" >/dev/null 2>&1; assert_exit 1 "$?" "empty target rejected"
 # --- package name normalization (feature: package-file-map) ---
 assert_eq "agentic-core"       "$(ic_pkg_fullname core)"       "core -> agentic-core"
 assert_eq "agentic-engineer"   "$(ic_pkg_fullname engineer)"   "engineer -> agentic-engineer"
-assert_eq "agentic-management" "$(ic_pkg_fullname management)" "management -> agentic-management"
+assert_eq "agentic-init"     "$(ic_pkg_fullname init)"     "init -> agentic-init"
+assert_eq "agentic-ba"       "$(ic_pkg_fullname ba)"       "ba -> agentic-ba"
+assert_eq "agentic-pm"       "$(ic_pkg_fullname pm)"       "pm -> agentic-pm"
+ic_pkg_fullname management >/dev/null 2>&1; assert_exit 1 "$?" "management is no longer a package"
 assert_eq "agentic-core"       "$(ic_pkg_fullname agentic-core)" "accepts full name"
 ic_pkg_fullname bogus >/dev/null 2>&1; assert_exit 1 "$?" "unknown package rejected"
 
-# --- placement modes (feature: file-placement) ---
+# --- placement is always a copy (feature: copy-only) ---
 psrc="$(mktemp -d)"; echo hi > "$psrc/a.txt"; mkdir "$psrc/sub"; echo x > "$psrc/sub/b.txt"
 pd="$(mktemp -d)"
-ic_place "$psrc" "$pd/out" copy
-assert_eq "hi" "$(cat "$pd/out/a.txt")" "copy places file content"
-assert_eq "x"  "$(cat "$pd/out/sub/b.txt")" "copy places nested content"
-assert_exit 1 "$([ -L "$pd/out" ] && echo 0 || echo 1)" "copy dest is NOT a symlink"
-ic_place "$psrc" "$pd/lnk" symlink
-assert_exit 0 "$([ -L "$pd/lnk" ] && echo 0 || echo 1)" "symlink dest IS a symlink"
-assert_eq "hi" "$(cat "$pd/lnk/a.txt")" "symlink resolves to content"
-ic_place "$psrc" "$pd/out" copy   # re-place over existing
+ic_place "$psrc" "$pd/out"
+assert_eq "hi" "$(cat "$pd/out/a.txt")" "place copies file content"
+assert_eq "x"  "$(cat "$pd/out/sub/b.txt")" "place copies nested content"
+assert_exit 1 "$([ -L "$pd/out" ] && echo 0 || echo 1)" "dest is NOT a symlink"
+ic_place "$psrc" "$pd/out"   # re-place over existing
 assert_eq "hi" "$(cat "$pd/out/a.txt")" "re-place over existing is clean/idempotent"
+# a pre-existing symlink at dest is replaced by a real copy (migration path)
+ln -sfn "$psrc" "$pd/lnk"
+ic_place "$psrc" "$pd/lnk"
+assert_exit 1 "$([ -L "$pd/lnk" ] && echo 0 || echo 1)" "existing symlink is replaced by a copy"
+assert_eq "hi" "$(cat "$pd/lnk/a.txt")" "replaced symlink has real content"
 
 # --- install_package placement + discovery links (feature: file-placement) ---
 tcfg="$(mktemp -d)"
-ic_install_package core "$tcfg" copy
+ic_install_package core "$tcfg"
 assert_exit 0 "$([ -f "$tcfg/agentic/agentic-core/hooks/verify-gate.sh" ] && echo 0 || echo 1)" "core hooks placed"
 assert_exit 0 "$([ -f "$tcfg/agentic/agentic-core/lib/state.sh" ] && echo 0 || echo 1)" "core lib placed"
 # core has NO discovery components -> no stray command links
 assert_exit 1 "$([ -d "$tcfg/commands" ] && [ -n "$(ls -A "$tcfg/commands" 2>/dev/null)" ] && echo 0 || echo 1)" "core creates no command links"
 
-ic_install_package engineer "$tcfg" copy
+ic_install_package engineer "$tcfg"
 assert_exit 0 "$([ -L "$tcfg/commands/engineer.md" ] && echo 0 || echo 1)" "engineer command is a discovery symlink"
 assert_exit 0 "$([ -e "$tcfg/commands/engineer.md" ] && echo 0 || echo 1)" "engineer command link resolves"
 assert_exit 0 "$([ -L "$tcfg/agents/executor.md" ] && echo 0 || echo 1)" "engineer executor agent linked"
 assert_exit 0 "$([ -e "$tcfg/skills/agentic-engineer/SKILL.md" ] && echo 0 || echo 1)" "engineer skill linked + resolves"
 
-# symlink mode: whole package tree is a symlink; discovery links still resolve
+# copy mode: the package tree is a real directory, never a symlink
 tcfg2="$(mktemp -d)"
-ic_install_package engineer "$tcfg2" symlink
-assert_exit 0 "$([ -L "$tcfg2/agentic/agentic-engineer" ] && echo 0 || echo 1)" "symlink mode: package tree itself is a symlink"
-assert_exit 0 "$([ -e "$tcfg2/commands/engineer.md" ] && echo 0 || echo 1)" "symlink mode: discovery link resolves"
+ic_install_package engineer "$tcfg2"
+assert_exit 1 "$([ -L "$tcfg2/agentic/agentic-engineer" ] && echo 0 || echo 1)" "package tree is not a symlink"
+# discovery links remain symlinks (internal to the target; --mode never governed them)
+assert_exit 0 "$([ -L "$tcfg2/commands/engineer.md" ] && echo 0 || echo 1)" "discovery link is still a symlink"
+assert_exit 0 "$([ -e "$tcfg2/commands/engineer.md" ] && echo 0 || echo 1)" "discovery link resolves"
 
 # re-install is idempotent (re-run doesn't error, links still resolve)
-ic_install_package engineer "$tcfg" copy
+ic_install_package engineer "$tcfg"
 assert_exit 0 "$([ -e "$tcfg/commands/engineer.md" ] && echo 0 || echo 1)" "re-install: discovery link still resolves"
 
 # --- install manifest (feature: install-manifest) ---
@@ -78,7 +85,7 @@ assert_exit 1 "$(ic_manifest_installed "$tcfg" management; echo $?)" "management
 
 # re-install updates the manifest (single object, not duplicated/appended)
 before_links="$(jq -c '.links | sort' "$mfe")"
-ic_install_package engineer "$tcfg" copy
+ic_install_package engineer "$tcfg"
 assert_exit 0 "$(jq -e 'type=="object"' "$mfe" >/dev/null 2>&1 && echo 0 || echo 1)" "re-install manifest stays a single object"
 assert_eq "$before_links" "$(jq -c '.links | sort' "$mfe")" "re-install: links not duplicated"
 

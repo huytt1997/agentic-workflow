@@ -21,8 +21,10 @@
 # adds P3, P4, P5, and the else (default-allow) case:
 #   P0 | block: worktree_path unset                | allow: worktree recorded
 #   P1 | block: verify_cmds.fast/large or tasks     | allow: recorded, and
-#      | unrecorded; (interactive) plan_approved    |   (interactive) approved
-#      | not true                                   |
+#      | unrecorded; (interactive) plan_approved    |   (interactive) approved,
+#      | not true; verify_cmds.e2e non-null AND     |   and (if the project has
+#      | e2e_plan empty                             |   an e2e runner) the e2e
+#      |                                             |   scenarios are planned
 #   P2 | block: tasks-remaining != 0, or effective   | allow: all tasks
 #      | checks.fast != pass                         |   verified AND fast pass
 #   P3 | block: effective checks.large != pass       | allow: large pass
@@ -38,6 +40,12 @@
 # so a P4 changes_requested -> reopen P2 -> P3 -> P4 cycle cannot terminate on
 # the *previous* pass's green. Proven end-to-end by the integration-style
 # fixture in verify_gate_test.sh (a full two-cycle P4->P2->P3->P4 walk).
+# e2e plan gate (e2e-plan-gate): the P1 branch additionally requires a non-empty
+# e2e_plan, but ONLY when verify_cmds.e2e is non-null -- i.e. only when
+# detect-verify actually found an e2e runner. Projects with no e2e script skip
+# the gate entirely rather than deadlocking against a suite they cannot run.
+# e2e_plan is plan data (like tasks): it carries no SHA stamp and `reopen` never
+# clears it, so a P3->P2 bounce keeps the planned scenarios.
 # Per-check SHA staleness (gate-staleness, T-C6): every gate-relevant check
 # (fast/P2, large/P3, review/P4) reads through `state.sh check-get`, which
 # treats a check as effective-null whenever its `_at` stamp no longer equals
@@ -126,6 +134,22 @@ case "$PHASE" in
       approved="$(_get plan_approved)"
       if [ "$approved" != "true" ]; then
         _block "P1: plan not approved (interactive)"
+      fi
+    fi
+    # e2e plan gate (feature: e2e-plan-gate): the e2e scenarios LARGE verify will
+    # assert must be planned BEFORE execute, not improvised at P3.
+    #
+    # Conditional on purpose: only projects that actually have an e2e runner
+    # (verify_cmds.e2e non-null, from detect-verify) are gated. A hard requirement
+    # would deadlock every project without one -- the gate would block forever,
+    # trip the runaway guard, and escalate needs_human for a project that simply
+    # cannot run e2e.
+    e2e_cmd="$(_get 'verify_cmds.e2e')"
+    if [ -n "$e2e_cmd" ] && [ "$e2e_cmd" != "null" ]; then
+      e2e_len="$(_get 'e2e_plan | length')"
+      case "$e2e_len" in ''|null|*[!0-9]*) e2e_len=0 ;; esac
+      if [ "$e2e_len" -eq 0 ]; then
+        _block "P1: e2e plan not recorded (project has an e2e runner: ${e2e_cmd})"
       fi
     fi
     ;;

@@ -92,4 +92,16 @@ assert_eq "null" "$(cd "$G" && bash "$S" check-get large)" "check-get null for n
 ( cd "$G" && bash "$S" check-set fast pass )
 assert_eq "pass" "$(cd "$G" && bash "$S" check-get fast)" "check-get valid again after re-running fast at new HEAD"
 
+# --- e2e_plan (feature: e2e-plan-gate) ---
+assert_eq "0" "$(bash "$S" get 'e2e_plan | length')" "e2e_plan initializes empty"
+bash "$S" e2e-plan-add "Given a report with rows, clicking Export downloads a .csv"
+assert_eq "1" "$(bash "$S" get 'e2e_plan | length')" "e2e-plan-add appends a scenario"
+bash "$S" e2e-plan-add "Given zero rows, the .csv has only a header row"
+assert_eq "2" "$(bash "$S" get 'e2e_plan | length')" "e2e-plan-add appends a second scenario"
+assert_contains "$(bash "$S" get 'e2e_plan[0]')" "downloads a .csv" "scenario text round-trips"
+
+# e2e_plan is plan data, not a check: reopen must NOT clear it (mirrors .tasks)
+bash "$S" reopen P2 >/dev/null
+assert_eq "2" "$(bash "$S" get 'e2e_plan | length')" "reopen P2 preserves e2e_plan"
+
 assert_summary

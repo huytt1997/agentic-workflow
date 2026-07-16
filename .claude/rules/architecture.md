@@ -16,7 +16,7 @@ wrap it in an outer loop that runs _thousands_ of features back-to-back with a *
 - **Inner loop — `agentic-engineer`**: builds ONE feature. An orchestrator SOP dispatches subagents
   through phases **P0 worktree → P1 plan → P2 execute → P3 verify → P4 review → P5 lifecycle**. Runs
   interactively (human) or headless (`--mode auto`).
-- **Outer loop — `agentic-management`**: **deterministic shell** (`pm-runner.sh`) that spawns a _fresh,
+- **Outer loop — `agentic-pm`**: **deterministic shell** (`pm-runner.sh`) that spawns a _fresh,
   ephemeral_ `claude -p` engineer per OpenSpec change and throws its context away on exit. Adaptivity
   comes from _periodic bounded compaction_, never a persistent session. This is the whole point
   (`I-1`/`D-14`): the shell holds ~0 context; durable state lives in files.
@@ -30,13 +30,17 @@ wrap it in an outer loop that runs _thousands_ of features back-to-back with a *
 | PostToolUse         | `emit-event.sh`      | NDJSON event stream; fire-and-forget; always exit 0 (`D-11`, `I-8`)            |
 | Stop / SubagentStop | `verify-gate.sh`     | block "stop before green"; runaway guard → `needs_human` (`I-3`, `D-8`)        |
 
-## Three plugins (dependency order)
+## Five plugins (dependency order)
 
 | Plugin                 | Role                                                                            | Depends on       |
 | ---------------------- | ------------------------------------------------------------------------------- | ---------------- |
-| `agentic-core`         | Shared kernel: safety, verification, observability, state/checkpoint/profile libs | —              |
+| `agentic-core`         | Shared kernel: safety, verification, observability, state/checkpoint/profile libs, BA↔PM frontmatter contract | — |
 | `agentic-engineer`     | Single-feature pipeline (P0–P5), interactive or headless                        | core             |
-| `agentic-management`   | BA + PM automation over OpenSpec; deterministic outer loop                      | core + engineer  |
+| `agentic-init`         | Bootstrap a target: OpenSpec CLI + `openspec init` + `docs/` scaffold           | core             |
+| `agentic-ba`           | Reads `docs/**/*.md` → OpenSpec changes with testable acceptance criteria       | core             |
+| `agentic-pm`           | Deterministic outer loop over the OpenSpec backlog                              | core + engineer  |
+
+`install.sh` resolves these automatically: `--package pm` installs core + engineer + pm.
 
 ## The hard boundary: tooling vs. target
 
@@ -54,10 +58,11 @@ PATH wrappers + superpowers skills. Memory = `.agentic/state.json` (within-featu
 `checkpoint.sh`. Recovery = revert-last-green + runaway guard → `needs_human`. Safety = `safety-guard.sh` +
 headless allow-list. Lifecycle = P5 worktree cleanup. (Full table: plan.md §5.)
 
-## Intended repository layout — NOTE: not built yet
+## Repository layout
 
-See [roadmap.md](roadmap.md) for the honest current state (**this repo is currently spec-only**). The
-target layout is `bin/{install,update,uninstall}.sh` + `packages/{agentic-core,agentic-engineer,
-agentic-management}/`, with `.claude-plugin/plugin.json` per plugin and `.claude-plugin/marketplace.json`
-at the repo root. Component dirs (`commands/`, `agents/`, `skills/<name>/SKILL.md`, `hooks/hooks.json`,
-`bin/`) live at each plugin root; `bin/` is auto-added to the Bash PATH. Full tree: plan.md §8.
+See [roadmap.md](roadmap.md) for what remains (**the five packages are built and fixture-tested**). The
+layout is `packages/{install,update,uninstall}.sh` + `packages/{agentic-core,agentic-engineer,
+agentic-init,agentic-ba,agentic-pm}/`. No `.claude-plugin/plugin.json` manifests exist — the installer
+discovers components by directory scan. Component dirs (`commands/`, `agents/`, `skills/<name>/SKILL.md`,
+`hooks/hooks.json`, `bin/`) live at each package root; each package's `bin/` is auto-added to the Bash
+PATH. Full tree: plan.md §8.

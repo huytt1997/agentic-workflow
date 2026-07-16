@@ -44,3 +44,21 @@ subagent's own instructions, not by the tool list; treat it as non-negotiable:
 - **English artifacts, kebab-case naming** for every test file it creates.
 - **Verification is real (I-7):** it runs the project's actual lint/typecheck/test/e2e commands and
   reports the real output; it never claims a check passed without having run it.
+
+## e2e at P3 comes from the plan (feature `e2e-plan-gate`)
+
+Do not invent the e2e surface at P3. Read the scenarios the planner recorded at P1:
+
+```bash
+agentic-state get e2e_plan
+```
+
+Implement **exactly those** scenarios as e2e tests, then run LARGE verify. Integration tests are
+still yours to design; the e2e set is not.
+
+If `e2e_plan` is empty, the project has no e2e runner (`verify_cmds.e2e` is null) — write no e2e
+tests and run LARGE as configured.
+
+If a planned scenario cannot be implemented as written, say so explicitly in your report rather than
+dropping it or substituting a weaker assertion — a scenario that silently disappears defeats the gate
+that required it.

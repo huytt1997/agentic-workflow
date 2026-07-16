@@ -7,6 +7,7 @@
 #   check-set <name> <value>  (sets checks.<name> and checks.<name>_at = current HEAD sha, T-C6)
 #   check-get <name>          (checks.<name> if checks.<name>_at == HEAD, else "null" — stale)
 #   checkpoints-add <phase> <label> <sha> <green>  (appends to state.checkpoints, consumed by checkpoint.sh)
+#   e2e-plan-add <scenario>   (appends to state.e2e_plan; plan data, never SHA-stamped)
 #
 # $AGENTIC_STATE overrides the state file location (default: <cwd>/.agentic/state.json).
 # Fail-open on missing jq or missing state file for read paths (never brick a session, D-9/T-C8).
@@ -47,6 +48,7 @@ cmd_init() {
       verify_cmds: { fast: null, component: null, large: null },
       checks: { fast: null, large: null, review: null },
       tasks: [],
+      e2e_plan: [],
       checkpoints: [],
       gate_attempts: 0,
       needs_human: false,
@@ -88,6 +90,16 @@ cmd_task_add() {
   jq --arg id "$id" --arg title "$title" \
     '.tasks += [{id: $id, title: $title, status: "pending"}]' \
     "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+}
+
+# e2e-plan-add <scenario> — appends one planned e2e scenario to .e2e_plan.
+# Plan data, not a check: it carries no SHA stamp and `reopen` never clears it,
+# exactly like .tasks. The P1 gate requires this to be non-empty before execute
+# whenever the project actually has an e2e runner (verify_cmds.e2e non-null).
+cmd_e2e_plan_add() {
+  local scenario="${1:?usage: e2e-plan-add <scenario>}" tmp
+  tmp="$(mktemp)"
+  jq --arg s "$scenario" '.e2e_plan += [$s]' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
 }
 
 cmd_task_set() {
@@ -192,11 +204,12 @@ main() {
     task-add) cmd_task_add "$@" ;;
     task-set) cmd_task_set "$@" ;;
     tasks-remaining) cmd_tasks_remaining "$@" ;;
+    e2e-plan-add) cmd_e2e_plan_add "$@" ;;
     reopen) cmd_reopen "$@" ;;
     check-set) cmd_check_set "$@" ;;
     check-get) cmd_check_get "$@" ;;
     checkpoints-add) cmd_checkpoints_add "$@" ;;
-    *) echo "usage: state.sh {init|get|set|phase|task-add|task-set|tasks-remaining|reopen|check-set|check-get|checkpoints-add} ..." >&2; exit 1 ;;
+    *) echo "usage: state.sh {init|get|set|phase|task-add|task-set|tasks-remaining|e2e-plan-add|reopen|check-set|check-get|checkpoints-add} ..." >&2; exit 1 ;;
   esac
 }
 

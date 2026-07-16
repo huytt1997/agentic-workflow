@@ -22,13 +22,13 @@ impossible, not this document.
 
 ## Model / effort pin table (D-6)
 
-| Phase | Subagent | Model / effort | Superpowers skill(s) |
-| --- | --- | --- | --- |
-| P0 | `worktree` | haiku / low | `using-git-worktrees` |
-| P1 | `planner` | opus / high | `brainstorming` (interactive only) + `writing-plans` |
-| P2 | `executor` | sonnet / medium | `executing-plans` (or `subagent-driven-development` when the plan is subagent-shaped) |
-| P2 (per task) & P3 | `qa` | sonnet / medium | `test-driven-development` + `verification-before-completion` |
-| P4 | `reviewer` | opus / high | `requesting-code-review` (2-stage) |
+| Phase              | Subagent   | Model / effort  | Superpowers skill(s)                                         |
+| ------------------ | ---------- | --------------- | ------------------------------------------------------------ |
+| P0                 | `worktree` | haiku / low     | `using-git-worktrees`                                        |
+| P1                 | `planner`  | opus / high     | `brainstorming` (interactive only) + `writing-plans`         |
+| P2                 | `executor` | sonnet / medium | `executing-plans`                                            |
+| P2 (per task) & P3 | `qa`       | sonnet / medium | `test-driven-development` + `verification-before-completion` |
+| P4                 | `reviewer` | opus / high     | `requesting-code-review` (2-stage)                           |
 
 Pin the model and effort explicitly in the `Task` tool dispatch for every phase above — never rely
 on subagent frontmatter alone (bug #44385).
@@ -47,7 +47,7 @@ Record both immediately: `agentic-state init <feature-slug> --mode {interactive|
 <id>]`. Every later phase reads `mode` and `change_id` back from state rather than re-deriving them,
 so a resumed/reopened run behaves identically.
 
-**needs_human precondition (T-E9, feature `needs-human-escalate`):** before dispatching *any*
+**needs_human precondition (T-E9, feature `needs-human-escalate`):** before dispatching _any_
 phase, run `agentic-state get needs_human`. If it is `true`, **stop immediately** and surface
 `agentic-state get blocking_reason` to the human/PM — **do not retry, do not dispatch**. The full
 check-early / stop-don't-retry / write-outcome-with-needs_human contract this precondition refers
@@ -64,12 +64,12 @@ that path as the working directory.
 ## needs_human escalation — check-early, stop-don't-retry (T-E9, feature `needs-human-escalate`)
 
 The per-phase runaway guard that **sets** `needs_human` lives in `verify-gate.sh` (plan 04,
-feature `gate-runaway`, T-C7): once the *current* phase's gate has failed too many times in a row,
+feature `gate-runaway`, T-C7): once the _current_ phase's gate has failed too many times in a row,
 the hook sets `needs_human=true` + a human-readable `blocking_reason` in state, and then **ALLOWS
 the stop** — the agent's turn ends cleanly instead of hanging in an infinite retry loop. This SOP
 owns what happens on the **next re-entry**, after that gate-allowed stop:
 
-1. **Check first, at the top of every phase.** Before dispatching *any* subagent for *any*
+1. **Check first, at the top of every phase.** Before dispatching _any_ subagent for _any_
    phase — P0 through P5, on first entry and on every re-entry (including a `reopen P2` bounce back
    from P3/P4, T-C5) — run `agentic-state get needs_human` before doing anything else in that
    phase.
@@ -83,12 +83,12 @@ owns what happens on the **next re-entry**, after that gate-allowed stop:
    - **auto:** there is no human attached, so the escalation must reach the PM through the same
      channel a normal completion would — call
      `lib/write-outcome.sh "$WORKTREE_PATH" <change_id> needs_human <checkpoints> <tests_written>
-     "$(agentic-state get blocking_reason)"` (feature `auto-outcome`'s script; this records
+"$(agentic-state get blocking_reason)"` (feature `auto-outcome`'s script; this records
      **`status: needs_human`**, which forces `verification.large_passed:false` — never a
      self-contradictory "success" record), then clean up the worktree/`.agentic/` exactly as a
      normal P5 auto exit would (I-4). The PM then sees a well-formed `needs_human` outcome record,
      not a hang or a crash, and must not retry this change automatically.
-4. This check runs *before* the phase's own steps below on every entry; it does not replace them —
+4. This check runs _before_ the phase's own steps below on every entry; it does not replace them —
    a normal (non-escalated) re-entry proceeds straight into that phase's numbered steps.
 
 Acceptance: forcing the runaway guard (plan 04) produces a clean escalation on the next re-entry —
@@ -120,13 +120,23 @@ Dispatch the `planner` subagent (opus / high).
   `openspec/changes/<id>/{proposal,design,specs,tasks}.md`; for anything the change doesn't
   specify, write `assumptions.md` documenting the gap and the assumption made; then run
   `writing-plans`. Proceed straight to P2 — **no checkpoint pause, no human approval**.
-- **Both modes:** auto-detect the project's fast/component/large verify commands (feature
+- **Both modes:** auto-detect the project's fast/component/large/e2e verify commands (feature
   `detect-verify`, `lib/detect-verify.sh <project-dir>` — this SOP calls that script and records
   its output into `verify_cmds`, it does not reimplement the heuristic here) and register every
   plan task with `agentic-state task-add <id> <title>`.
+- **Both modes — the e2e plan (feature `e2e-plan-gate`):** if `verify_cmds.e2e` is **non-null** (the
+  project has an e2e runner), decide the e2e scenarios LARGE verify will assert **now**, before any
+  code is written, and record each one with `agentic-state e2e-plan-add "<scenario>"`. Derive them
+  from the OpenSpec change's acceptance criteria (auto) or the brainstorm (interactive). Each
+  scenario must be **observable** — a user-visible behaviour or a checkable output — never "works
+  correctly". If `verify_cmds.e2e` is `null` the project has no e2e runner: record nothing and move
+  on. The P1 gate enforces exactly this asymmetry, so an empty plan on an e2e-capable project cannot
+  reach P2.
 
 Acceptance: interactive halts for approval with a plan present; auto proceeds straight to P2 having
-read the change, written `assumptions.md` for any gaps, and recorded verify cmds + tasks.
+read the change, written `assumptions.md` for any gaps, and recorded verify cmds + tasks. On an
+e2e-capable project (`verify_cmds.e2e` non-null) an empty `e2e_plan` blocks P2; on a project without
+an e2e runner an empty `e2e_plan` is allowed through.
 
 ## P2 — execute (T-E4, executor -> qa per task)
 
@@ -137,11 +147,11 @@ read the change, written `assumptions.md` for any gaps, and recorded verify cmds
    `verification-before-completion`) to:
    a. write/update the **component test** for that task, and
    b. run **FAST verify** = lint + typecheck + component test (component step only when the
-      project configures one; `component: null` from `detect-verify` falls back to lint+typecheck).
+   project configures one; `component: null` from `detect-verify` falls back to lint+typecheck).
 4. On pass: `agentic-state task-set <id> verified` then `agentic-checkpoint checkpoint P2 <id>
-   --green`.
-5. On fail: `agentic-state check-set fast fail`, then **route the fix** — a failing *test* is
-   `qa`'s to fix, a failing *implementation* goes back to `executor` (bounded retries) — then
+--green`.
+5. On fail: `agentic-state check-set fast fail`, then **route the fix** — a failing _test_ is
+   `qa`'s to fix, a failing _implementation_ goes back to `executor` (bounded retries) — then
    re-verify until `agentic-state check-set fast pass`.
 
 The gate (`verify-gate.sh`) blocks stopping while tasks remain or `fast` is red — this SOP does not
@@ -153,9 +163,13 @@ checkpoints, and zero remaining tasks before P3 is allowed.
 ## P3 — verify large (T-E5, QA-owned)
 
 1. `agentic-state phase P3`.
-2. Dispatch `qa` to ensure the broader tests exist (integration/e2e, whichever the project
-   configures) and run **LARGE verify** = the full suite (lint + typecheck + component +
-   integration + e2e — the same component tests `qa` wrote in P2 are included).
+2. Dispatch `qa` to ensure the broader tests exist and run **LARGE verify** = the full suite
+   (lint + typecheck + component + integration + e2e — the same component tests `qa` wrote in P2 are
+   included). The e2e surface is **not** improvised here: `qa` implements the scenarios recorded in
+   `e2e_plan` at P1 (feature `e2e-plan-gate`), read back with `agentic-state get e2e_plan`. Integration
+   tests remain `qa`'s to design. If a planned scenario turns out to be unimplementable as written,
+   that is a planning defect — `agentic-state reopen P1` is not available, so surface it rather than
+   silently dropping the scenario.
 3. Pass: `agentic-state check-set large pass` + `agentic-checkpoint checkpoint P3 large --green`.
 4. Fail: `agentic-state check-set large fail`, then `agentic-state reopen P2` (nulls the
    downstream `large`/`review` checks so a later stop can't pass on a stale green, T-C5) and return
@@ -172,7 +186,7 @@ the component tests `qa` wrote in P2.
 3. Approve: `agentic-state check-set review pass`.
 4. Changes requested: `agentic-state check-set review changes_requested`, then
    `agentic-state reopen P2` and return to P2. The run cannot terminate on a stale review — a
-   *fresh* review must pass after every re-entry.
+   _fresh_ review must pass after every re-entry.
 
 Acceptance: a spec-violating diff yields `changes_requested` and the run cannot terminate until a
 fresh review passes.

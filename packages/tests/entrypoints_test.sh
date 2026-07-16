@@ -10,22 +10,24 @@ UNINSTALL="$ROOT/packages/uninstall.sh"
 # --- selection helpers (feature: install-cli) ---
 assert_eq "agentic-core
 agentic-engineer
-agentic-management" "$(ic_expand_selection all)" "all expands in dependency order"
+agentic-init
+agentic-ba
+agentic-pm" "$(ic_expand_selection all)" "all expands in dependency order"
 assert_eq "agentic-engineer" "$(ic_expand_selection engineer)" "single token expands"
 ic_expand_selection bogus >/dev/null 2>&1; assert_exit 1 "$?" "invalid selection rejected"
 
-ic_parse_common --target /tmp/x --package core --mode symlink
+ic_parse_common --target /tmp/x --package core
 assert_eq "/tmp/x" "$IC_TARGET" "parse target"
 assert_eq "core" "$IC_PACKAGE" "parse package"
-assert_eq "symlink" "$IC_MODE" "parse mode"
+assert_eq "copy" "$IC_MODE" "mode defaults to copy (--mode is retired)"
 ic_parse_common --package core >/dev/null 2>&1; assert_exit 2 "$?" "missing --target rejected"
-assert_eq "all" "$(printf '4\n' | ic_menu 2>/dev/null)" "menu choice 4 -> all"
+assert_eq "all" "$(printf '6\n' | ic_menu 2>/dev/null)" "menu choice 6 -> all"
 
 # --- install.sh (features: install-cli, dependency-precondition) ---
 cfgA="$(mktemp -d)"
-out="$(bash "$INSTALL" --target "$cfgA" --package all --mode copy 2>&1)"; rc=$?
+out="$(bash "$INSTALL" --target "$cfgA" --package all 2>&1)"; rc=$?
 assert_exit 0 "$rc" "install all exits 0"
-for p in agentic-core agentic-engineer agentic-management; do
+for p in agentic-core agentic-engineer agentic-init agentic-ba agentic-pm; do
   assert_exit 0 "$(ic_manifest_installed "$cfgA" "$p"; echo $?)" "$p installed by 'all'"
 done
 s="$cfgA/settings.json"
@@ -33,28 +35,33 @@ assert_exit 0 "$(jq -e '.hooks.PreToolUse | length >= 1' "$s" >/dev/null 2>&1 &&
 assert_exit 0 "$([ -e "$cfgA/commands/engineer.md" ] && echo 0 || echo 1)" "engineer command discoverable after install all"
 assert_contains "$out" "agentic-core/bin" "install prints a PATH hint for core bin"
 
-# dependency precondition: engineer alone without core -> fail fast, nothing placed
+# dependency auto-resolution: engineer alone pulls core in automatically
 cfgB="$(mktemp -d)"
 out2="$(bash "$INSTALL" --target "$cfgB" --package engineer 2>&1)"; rc2=$?
-assert_exit 1 "$rc2" "engineer-without-core exits non-zero"
-assert_contains "$out2" "agentic-core first" "clear precondition error message"
-assert_exit 1 "$([ -d "$cfgB/agentic/agentic-engineer" ] && echo 0 || echo 1)" "no engineer files placed on precondition failure"
+assert_exit 0 "$rc2" "engineer-without-core now exits 0 (core auto-installed)"
+assert_exit 0 "$(ic_manifest_installed "$cfgB" core; echo $?)" "core auto-installed as engineer's dep"
+assert_exit 0 "$(ic_manifest_installed "$cfgB" engineer; echo $?)" "engineer installed"
+assert_contains "$out2" "installed agentic-core" "install reports the auto-added dependency"
+sB="$cfgB/settings.json"
+assert_exit 0 "$(jq -e '.hooks.PreToolUse | length >= 1' "$sB" >/dev/null 2>&1 && echo 0 || echo 1)" "auto-installed core registered its hooks"
 
-# dependency precondition: management alone without core -> fail fast, nothing placed
+# dependency auto-resolution: pm pulls core AND engineer
 cfgB2="$(mktemp -d)"
-out2m="$(bash "$INSTALL" --target "$cfgB2" --package management 2>&1)"; rc2m=$?
-assert_exit 1 "$rc2m" "management-without-core exits non-zero"
-assert_contains "$out2m" "agentic-core first" "clear precondition error message (management)"
-assert_exit 1 "$([ -d "$cfgB2/agentic/agentic-management" ] && echo 0 || echo 1)" "no management files placed on precondition failure"
+out2m="$(bash "$INSTALL" --target "$cfgB2" --package pm 2>&1)"; rc2m=$?
+assert_exit 0 "$rc2m" "pm-without-deps exits 0"
+for p in agentic-core agentic-engineer agentic-pm; do
+  assert_exit 0 "$(ic_manifest_installed "$cfgB2" "$p"; echo $?)" "$p present after 'install pm'"
+done
+assert_exit 1 "$(ic_manifest_installed "$cfgB2" ba; echo $?)" "install pm does NOT pull ba"
 
 # menu path (no --package): piping '1' installs core
 cfgC="$(mktemp -d)"
-printf '1\n' | bash "$INSTALL" --target "$cfgC" --mode copy >/dev/null 2>&1
+printf '1\n' | bash "$INSTALL" --target "$cfgC" >/dev/null 2>&1
 assert_exit 0 "$(ic_manifest_installed "$cfgC" core; echo $?)" "menu choice 1 installs core"
 
 # --- update.sh (feature: update-cli) ---
 cfgU="$(mktemp -d)"
-bash "$INSTALL" --target "$cfgU" --package core --mode copy >/dev/null 2>&1
+bash "$INSTALL" --target "$cfgU" --package core >/dev/null 2>&1
 # tamper with a placed file, then update should re-sync it back
 echo "TAMPERED" > "$cfgU/agentic/agentic-core/lib/state.sh"
 bash "$UPDATE" --target "$cfgU" --package core >/dev/null 2>&1; rcU=$?
@@ -69,17 +76,20 @@ assert_exit 1 "$rcU2" "update of never-installed target exits non-zero"
 assert_contains "$out" "not installed" "update prints a not-installed error"
 assert_exit 1 "$([ -e "$cfgU2/agentic" ] && echo 0 || echo 1)" "update refusal touches nothing at the target"
 
-# update re-syncs a symlink-mode install by re-verifying the link (no --mode required)
-cfgU3="$(mktemp -d)"
-bash "$INSTALL" --target "$cfgU3" --package core --mode symlink >/dev/null 2>&1
-rm -f "$cfgU3/agentic/agentic-core"
-bash "$UPDATE" --target "$cfgU3" --package core >/dev/null 2>&1; rcU3=$?
-assert_exit 0 "$rcU3" "update relinks a symlink-mode install without --mode"
-assert_exit 0 "$([ -L "$cfgU3/agentic/agentic-core" ] && echo 0 || echo 1)" "update restored the symlink"
+# --mode is retired: symlink gets a specific, actionable error
+cfgM="$(mktemp -d)"
+outM="$(bash "$INSTALL" --target "$cfgM" --package core --mode symlink 2>&1)"; rcM=$?
+assert_exit 2 "$rcM" "--mode symlink is rejected"
+assert_contains "$outM" "copy-only" "symlink rejection explains installs are copy-only"
+assert_exit 1 "$([ -e "$cfgM/agentic" ] && echo 0 || echo 1)" "rejected --mode touches nothing"
+# --mode copy still accepted as a no-op
+cfgM2="$(mktemp -d)"
+bash "$INSTALL" --target "$cfgM2" --package core --mode copy >/dev/null 2>&1
+assert_exit 0 "$(ic_manifest_installed "$cfgM2" core; echo $?)" "--mode copy still works"
 
 # --- uninstall.sh (feature: uninstall-cli) ---
 cfgX="$(mktemp -d)"
-bash "$INSTALL" --target "$cfgX" --package all --mode copy >/dev/null 2>&1
+bash "$INSTALL" --target "$cfgX" --package all >/dev/null 2>&1
 # a user-owned artifact that must survive uninstall
 echo "user-data" > "$cfgX/events.ndjson"
 core_cmd="$cfgX/agentic/agentic-core/hooks/safety-guard.sh"
@@ -97,7 +107,7 @@ assert_exit 0 "$?" "uninstall of absent package is a no-op"
 
 # uninstall all -> agentic/ tree fully gone
 bash "$UNINSTALL" --target "$cfgX" --package all >/dev/null 2>&1
-for p in agentic-core agentic-engineer agentic-management; do
+for p in agentic-core agentic-engineer agentic-init agentic-ba agentic-pm; do
   assert_exit 1 "$([ -d "$cfgX/agentic/$p" ] && echo 0 || echo 1)" "$p removed by uninstall all"
 done
 assert_exit 1 "$([ -e "$cfgX/commands/engineer.md" ] && echo 0 || echo 1)" "engineer discovery link removed by uninstall all"

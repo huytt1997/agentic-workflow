@@ -12,11 +12,13 @@ agent harness from Claude Code primitives — hooks, files, subagents, CLI — t
 feature _correctly and safely_, then wraps it in a deterministic outer loop that builds _many_ features
 back-to-back with a **flat context footprint**.
 
-## ⚠️ Current state — read before assuming files exist
+## Current state
 
-This repo is currently **spec-only**: it contains `specs/plan.md`, `specs/execution-plan.md`, `README.md`,
-`.claude/`, and `.envrc`. The `packages/`, `bin/`, and `.claude-plugin/` scaffold the specs describe **does
-not exist on disk yet** — building it is the work. Full state + next steps: [.claude/rules/roadmap.md](.claude/rules/roadmap.md).
+The five packages are built and fixture-tested: `agentic-core` (kernel + the BA↔PM frontmatter
+contract), `agentic-engineer` (P0–P5), `agentic-init` (target bootstrap), `agentic-ba` (docs → OpenSpec
+changes), `agentic-pm` (the deterministic outer loop). Install with `packages/install.sh`; dependencies
+resolve automatically. Live end-to-end runs against a real `claude -p` engineer remain deferred.
+Full state + next steps: [.claude/rules/roadmap.md](.claude/rules/roadmap.md).
 
 ## Source of truth
 
@@ -44,13 +46,14 @@ The load-bearing invariants; the full set with rationale is in [.claude/rules/in
 12. **Hooks are fast; observers fire-and-forget** and always exit 0. (`I-8`)
 13. **English artifacts, kebab-case naming.**
 
-## Quick start (dev loop — once the scaffold exists)
+## Quick start (dev loop)
 
 ```bash
-jq . packages/*/.claude-plugin/plugin.json packages/*/hooks/*.json  # validate plugin JSON first
-claude --plugin-dir packages/<name>        # test a plugin without installing
-bin/install.sh --mode symlink              # install live-editable for dev
-/reload-plugins                            # after editing agent/hook files on disk
+jq . packages/*/hooks/*.json                        # validate hook JSON first
+bash tests/run-all.sh                              # the real suite (I-7)
+claude --plugin-dir packages/<name>                # test a plugin without installing
+packages/install.sh --target ~/.claude --package pm # copy-only; deps resolve automatically
+/reload-plugins                                    # after editing agent/hook files on disk
 ```
 
 Details, the verification model, and conventions: [.claude/rules/dev-workflow.md](.claude/rules/dev-workflow.md).

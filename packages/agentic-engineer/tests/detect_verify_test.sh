@@ -73,4 +73,25 @@ assert_eq "null" "$(jq -r .fast <<<"$out_none")" "non-Node dir -> fast:null"
 assert_eq "null" "$(jq -r .component <<<"$out_none")" "non-Node dir -> component:null"
 assert_eq "null" "$(jq -r .large <<<"$out_none")" "non-Node dir -> large:null"
 
+# --- e2e surfaced for the gate (feature: e2e-plan-gate) ---
+E2E_FULL="$(mktemp -d)"
+jq -n '{scripts:{lint:"eslint .", typecheck:"tsc --noEmit", test:"vitest run", "test:e2e":"playwright test"}}' > "$E2E_FULL/package.json"
+out_e2e="$(bash "$D" "$E2E_FULL")"
+assert_eq "npm run test:e2e" "$(jq -r '.e2e' <<<"$out_e2e")" "e2e command surfaced when test:e2e exists"
+assert_contains "$(jq -r '.large' <<<"$out_e2e")" "npm run test:e2e" "large still includes the e2e step"
+
+# bare 'e2e' script name is also honoured
+E2E_BARE="$(mktemp -d)"
+jq -n '{scripts:{lint:"eslint .", e2e:"cypress run"}}' > "$E2E_BARE/package.json"
+assert_eq "npm run e2e" "$(jq -r '.e2e' <<<"$(bash "$D" "$E2E_BARE")")" "bare e2e script surfaced"
+
+# no e2e script -> null (this is what makes the P1 gate conditional)
+E2E_NONE="$(mktemp -d)"
+jq -n '{scripts:{lint:"eslint .", test:"vitest run"}}' > "$E2E_NONE/package.json"
+assert_eq "null" "$(jq -r '.e2e' <<<"$(bash "$D" "$E2E_NONE")")" "e2e null when project has no e2e script"
+
+# non-Node project -> null
+E2E_NOPKG="$(mktemp -d)"
+assert_eq "null" "$(jq -r '.e2e' <<<"$(bash "$D" "$E2E_NOPKG")")" "e2e null for a non-Node project"
+
 assert_summary

@@ -223,5 +223,37 @@ assert_exit 2 "$(gate)" "new phase P3 starts its own counter (not pre-tripped by
 assert_eq "false" "$(bash "$S" get needs_human)" "needs_human still false: P3's own attempts are under cap"
 unset AGENTIC_GATE_MAX
 
+# --- e2e plan gate (feature: e2e-plan-gate) ---
+# Project HAS an e2e runner + empty plan -> block
+newrepo; bash "$S" init demo --mode auto
+bash "$S" phase P1
+bash "$S" set 'verify_cmds.fast'  '"npm run lint"'
+bash "$S" set 'verify_cmds.large' '"npm run test"'
+bash "$S" set 'verify_cmds.e2e'   '"npm run test:e2e"'
+bash "$S" task-add t1 "a task"
+assert_exit 2 "$(gate)" "P1 blocks when an e2e runner exists but the plan is empty"
+assert_contains "$(cat /tmp/gate.out)" "e2e plan not recorded" "block reason names the missing e2e plan"
+
+# ...plan recorded -> allow
+bash "$S" e2e-plan-add "Given rows, clicking Export downloads a .csv"
+assert_exit 0 "$(gate)" "P1 allows once the e2e plan is recorded"
+
+# Project has NO e2e runner -> gate skipped entirely, an empty plan is fine
+newrepo; bash "$S" init demo --mode auto
+bash "$S" phase P1
+bash "$S" set 'verify_cmds.fast'  '"npm run lint"'
+bash "$S" set 'verify_cmds.large' '"npm run test"'
+bash "$S" set 'verify_cmds.e2e'   'null'
+bash "$S" task-add t1 "a task"
+assert_exit 0 "$(gate)" "P1 allows an empty e2e plan when the project has no e2e runner"
+
+# verify_cmds.e2e absent entirely (older state) reads as empty -> gate skipped, no deadlock
+newrepo; bash "$S" init demo --mode auto
+bash "$S" phase P1
+bash "$S" set 'verify_cmds.fast'  '"npm run lint"'
+bash "$S" set 'verify_cmds.large' '"npm run test"'
+bash "$S" task-add t1 "a task"
+assert_exit 0 "$(gate)" "P1 allows when verify_cmds.e2e was never recorded"
+
 assert_summary
 

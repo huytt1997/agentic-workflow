@@ -2,21 +2,25 @@
 # detect-verify.sh <project-dir>
 # Node-first verify auto-detect (T-E7). Reads <project-dir>/package.json .scripts
 # and the lockfile present to pick a package manager, then prints a JSON object:
-#   {"fast": "…|null", "component": "…|null", "large": "…|null"}
+#   {"fast": "…|null", "component": "…|null", "large": "…|null", "e2e": "…|null"}
 #
 #   fast      = lint + typecheck, joined with " && " (whichever scripts exist)
 #   component = first of test:component / test:unit / test (null if none exist)
 #   large     = fast + component + integration (test:integration/integration)
 #               + e2e (test:e2e/e2e), whichever exist, joined with " && "
+#   e2e       = first of test:e2e / e2e alone (null if none exist). Surfaced
+#               separately from `large` so the P1 gate can tell whether the
+#               project has an e2e runner at all: no runner -> no e2e plan is
+#               required to leave P1 (see verify-gate.sh's P1 branch).
 #
-# No package.json (non-Node project) -> {"fast":null,"component":null,"large":null}.
+# No package.json (non-Node project) -> {"fast":null,"component":null,"large":null,"e2e":null}.
 set -euo pipefail
 
 DIR="${1:?usage: detect-verify.sh <project-dir>}"
 PKG="$DIR/package.json"
 
 if [ ! -f "$PKG" ]; then
-  jq -n '{fast: null, component: null, large: null}'
+  jq -n '{fast: null, component: null, large: null, e2e: null}'
   exit 0
 fi
 
@@ -77,6 +81,9 @@ fast=""
 component=""
 [ -n "$component_script" ] && component="$(cmd_for "$component_script")"
 
+e2e=""
+[ -n "$e2e_script" ] && e2e="$(cmd_for "$e2e_script")"
+
 large_parts=("${fast_parts[@]}")
 [ -n "$component_script" ] && large_parts+=("$(cmd_for "$component_script")")
 [ -n "$integration_script" ] && large_parts+=("$(cmd_for "$integration_script")")
@@ -85,10 +92,11 @@ large_parts=("${fast_parts[@]}")
 large=""
 [ "${#large_parts[@]}" -gt 0 ] && large="$(join_parts "${large_parts[@]}")"
 
-jq -n --arg fast "$fast" --arg component "$component" --arg large "$large" '
+jq -n --arg fast "$fast" --arg component "$component" --arg large "$large" --arg e2e "$e2e" '
   {
     fast: (($fast | select(length > 0)) // null),
     component: (($component | select(length > 0)) // null),
-    large: (($large | select(length > 0)) // null)
+    large: (($large | select(length > 0)) // null),
+    e2e: (($e2e | select(length > 0)) // null)
   }
 '

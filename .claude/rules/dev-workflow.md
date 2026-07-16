@@ -4,18 +4,22 @@ _Applicability: read when running, testing, installing, or packaging the plugins
 docs in this repo._
 _Authoritative source: [specs/plan.md](../../specs/plan.md) §12 and [specs/execution-plan.md](../../specs/execution-plan.md) §6._
 
-> **Note:** most commands below operate on `packages/` and `bin/`, which **do not exist yet** — this repo
-> is currently spec-only (see [roadmap.md](roadmap.md)). They describe the dev loop once the scaffold is
-> built.
+> **Note:** the dev loop below assumes `packages/` is built and installable (see
+> [roadmap.md](roadmap.md) for what remains — live end-to-end runs against a real engineer).
 
 ## Dev loop (plugins)
 
 - **Test a plugin without installing:** `claude --plugin-dir packages/<name>`
 - **After editing agent/hook files on disk:** run `/reload-plugins` (changes are not hot-reloaded).
-- **Validate plugin JSON before anything else:**
-  `jq . packages/*/.claude-plugin/plugin.json packages/*/hooks/*.json`
-- **Install for development (live-editable):** `bin/install.sh --mode symlink`, then run the
-  `/plugin install …` + `/reload-plugins` commands the installer prints.
+- **Validate hook JSON before anything else:** `jq . packages/*/hooks/*.json` (no
+  `.claude-plugin/plugin.json` manifests exist — the installer discovers components by directory scan).
+- **Install:** `packages/install.sh --target <dir> --package <name>` — **copy-only** (D-13 as
+  amended; symlink mode was removed, so there is no live-editable install). Dependencies resolve
+  automatically: installing `engineer`/`init`/`ba`/`pm` pulls in `agentic-core`, and `pm` also pulls
+  `agentic-engineer`.
+- **Iterating on an installed target:** edits to `packages/` do **not** propagate — re-run
+  `packages/install.sh` after each change, then `/reload-plugins`. Prefer `claude --plugin-dir
+  packages/<name>` while developing to skip the install round-trip entirely.
 - Expect subagent-driven runs to cost **meaningfully more tokens** than a single-agent session; each
   engineer run also dispatches `qa` per task and again for the large suite.
 

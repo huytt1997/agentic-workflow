@@ -119,4 +119,13 @@ rc=$?
 assert_exit 1 "$rc" "bogus status exits non-zero"
 assert_exit 1 "$( [ -f "$TGT4/openspec/.pm/outcomes/c-4.json" ] && echo 0 || echo 1 )" "bogus status writes no outcome file"
 
+# --- e2e plan wiring (feature: e2e-plan-gate) ---
+e2e_skill="$(cat "$SK" 2>/dev/null)"
+assert_contains "$e2e_skill" "e2e-plan-add" "SOP records the e2e plan at P1"
+assert_contains "$e2e_skill" "verify_cmds.e2e" "SOP branches on whether an e2e runner exists"
+e2e_planner="$(cat "$AG/planner.md" 2>/dev/null)"
+assert_contains "$e2e_planner" "e2e-plan-add" "planner records e2e scenarios"
+e2e_qa="$(cat "$AG/qa.md" 2>/dev/null)"
+assert_contains "$e2e_qa" "e2e_plan" "qa implements the planned e2e scenarios"
+
 assert_summary

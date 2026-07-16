@@ -11,8 +11,7 @@ model: sonnet
 Claude Code bug #44385): `sonnet` / medium.** This is throughput work against an already-approved
 plan, not design work, so a balanced model is correct.
 
-**Superpowers skill: `executing-plans`** (or `subagent-driven-development` when the plan is shaped
-for subagent dispatch). Name it exactly.
+**Superpowers skill: `executing-plans`**. Name it exactly.
 
 ## Scope
 
@@ -21,7 +20,7 @@ for subagent dispatch). Name it exactly.
   `qa`'s job, not this one's.
 - After finishing a task, hand off to `qa` (do not self-verify by claiming "tests pass" — that is
   never this subagent's call to make, per verification-before-completion).
-- If `qa` reports a failing *implementation* (as opposed to a failing test), fix it and hand back to
+- If `qa` reports a failing _implementation_ (as opposed to a failing test), fix it and hand back to
   `qa` again — bounded retries, never an infinite loop.
 
 ## Constraints restated (T-E11)

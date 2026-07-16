@@ -3,25 +3,30 @@
 _Applicability: read to know **what to build next** and where the project actually stands._
 _Authoritative source: [specs/execution-plan.md](../../specs/execution-plan.md) (task-level build plan) and [specs/plan.md](../../specs/plan.md) §9._
 
-## ⚠️ Honest current state
+## Current state
 
-**This repository currently contains only the two planning docs** (`specs/plan.md`,
-`specs/execution-plan.md`), plus `README.md`, `.claude/`, and `.envrc`. The `packages/`, `bin/`, and
-`.claude-plugin/` scaffold described in the specs' layout **does not exist on disk yet.** The specs
-describe the _target_ system; building the scaffold and wiring it is the work.
+The **five packages are built and fixture-tested** and live under `packages/`: `agentic-core`
+(kernel + the BA↔PM frontmatter contract), `agentic-engineer` (P0–P5 pipeline), `agentic-init`
+(target bootstrap), `agentic-ba` (`docs/**/*.md` → OpenSpec changes), and `agentic-pm` (the
+deterministic outer loop). Install via `packages/{install,update,uninstall}.sh`; dependencies resolve
+automatically and installs are copy-only (D-13 as amended). The whole test suite runs green via
+`bash tests/run-all.sh`.
 
-execution-plan.md §0 calls the kernel hooks/libs "written" and the engineer "scaffolded" — treat that as
-the _intended_ M0 baseline, not the repo's reality. When the specs and the tree disagree, one of them is a
-bug; reconcile deliberately (the specs' own rule), don't paper over it.
+What remains is **live acceptance**, not scaffolding: end-to-end runs of the engineer (`--mode auto`)
+and the PM loop against a real `claude -p` on a real repository are still deferred (see the "Deferred"
+notes in the `agentic-engineer` / `agentic-ba` / `agentic-pm` skills). The `specs/plan.md` /
+`specs/execution-plan.md` documents referenced above no longer exist on disk; the load-bearing `D-*`
+decisions and `I-*` invariants they held now live in [decisions.md](decisions.md) and
+[invariants.md](invariants.md).
 
 ## Milestones
 
 | Milestone | Contains                                    | Done when                                                                             |
 | --------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| **M0**    | Scaffold (all files exist)                  | _Per specs, "done"; not yet present in this repo._                                     |
+| **M0**    | Scaffold (all files exist)                  | **Done** — all five packages present under `packages/`.                                |
 | **M1a**   | WS-A kernel hardening + tests               | `state.sh` / `safety-guard` / `verify-gate` / `checkpoint` pass fixture/unit tests    |
 | **M1b**   | WS-B engineer end-to-end (incl. new `qa`)   | Passes WS-B acceptance on a real repo, both modes; `qa` writes tests, FAST+LARGE run  |
-| **M1c**   | WS-E install / profiles                     | Clean install + symlink dev loop works                                                |
+| **M1c**   | WS-E install / profiles                     | Clean copy-only install + `claude --plugin-dir` dev loop works                        |
 | **M2a**   | WS-C `agentic-ba`                           | Real docs → valid, idempotent OpenSpec changes with testable acceptance criteria      |
 | **M2b**   | WS-D `agentic-pm` loop                      | Multi-change backlog to completion, flat context, outcome-gated                       |
 | **M3**    | Observability                               | SSE + SQLite event bus + Vite/React dashboard                                         |

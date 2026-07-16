@@ -16,26 +16,25 @@ ic_resolve_target() {
 # ic_pkg_fullname <name> -> canonical package dir name, or exit 1.
 ic_pkg_fullname() {
   case "${1:-}" in
-    core|agentic-core)             printf 'agentic-core\n' ;;
-    engineer|agentic-engineer)     printf 'agentic-engineer\n' ;;
-    management|agentic-management) printf 'agentic-management\n' ;;
+    core|agentic-core)         printf 'agentic-core\n' ;;
+    engineer|agentic-engineer) printf 'agentic-engineer\n' ;;
+    init|agentic-init)         printf 'agentic-init\n' ;;
+    ba|agentic-ba)             printf 'agentic-ba\n' ;;
+    pm|agentic-pm)             printf 'agentic-pm\n' ;;
     *) return 1 ;;
   esac
 }
 
-# ic_place <src> <dest> <mode>  (mode: copy|symlink; default copy)
-# Places src at dest: mode=copy recursively copies, mode=symlink makes dest a
-# symlink to src. Overwrites any existing dest cleanly (idempotent). Creates
-# parent dirs as needed.
+# ic_place <src> <dest>
+# Places src at dest by recursive copy. Overwrites any existing dest cleanly --
+# including a symlink left by a pre-D-13-amendment install, which is why the
+# rm -rf is not merely defensive: it is the migration path from symlink installs.
+# Creates parent dirs as needed. (D-13 as amended: installs are copy-only.)
 ic_place() {
-  local src="$1" dest="$2" mode="${3:-copy}"
+  local src="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
   rm -rf "$dest"
-  if [ "$mode" = symlink ]; then
-    ln -s "$src" "$dest"
-  else
-    cp -R "$src" "$dest"
-  fi
+  cp -R "$src" "$dest"
 }
 
 # Internal: create a discovery symlink from <cfg>/<kind>/<lname> into the
@@ -64,20 +63,20 @@ ic_manifest_installed() {
   [ -f "$mf" ]
 }
 
-# ic_install_package <name-any> <cfg> <mode>
+# ic_install_package <name-any> <cfg>
 # Places packages/<name> at <cfg>/agentic/<name> (via ic_place), then fans out
 # its discovery components (commands/*.md, agents/*.md, skills/<name>/) as
 # symlinks into <cfg>/commands, <cfg>/agents, <cfg>/skills pointing back into
-# the placed tree (both modes), and writes/overwrites the install manifest
-# (schema agentic-install/1; hooks_added starts empty — plan 03 fills it in).
+# the placed tree, and writes/overwrites the install manifest (schema
+# agentic-install/1; hooks_added starts empty — plan 03 fills it in).
 # Returns 1 on unknown name.
 ic_install_package() {
-  local name cfg mode src pkg_dest links=()
+  local name cfg src pkg_dest links=()
   name="$(ic_pkg_fullname "$1")" || return 1
-  cfg="$2"; mode="${3:-copy}"
+  cfg="$2"
   src="$IC_PACKAGES_DIR/$name"
   pkg_dest="$cfg/agentic/$name"
-  ic_place "$src" "$pkg_dest" "$mode"
+  ic_place "$src" "$pkg_dest"
 
   # discovery: commands/*.md and agents/*.md -> flat links; skills/<name>/ -> dir links
   local f base
@@ -99,7 +98,7 @@ ic_install_package() {
   mkdir -p "$(dirname "$mf")"
   local links_json
   links_json="$(printf '%s\n' "${links[@]:-}" | jq -R . | jq -s 'map(select(. != ""))')"
-  jq -n --arg s "agentic-install/1" --arg p "$name" --arg m "$mode" \
+  jq -n --arg s "agentic-install/1" --arg p "$name" --arg m "copy" \
         --arg v "$IC_VERSION" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --argjson links "$links_json" \
         '{schema:$s, package:$p, version:$v, mode:$m, installed_at:$t,
@@ -145,7 +144,10 @@ ic_hooks_merge() {
   jq --argjson h "$add" '.hooks_added = $h' "$mf" > "$tmp" && mv "$tmp" "$mf"
 }
 
-# ic_parse_common <args...> -> IC_TARGET / IC_PACKAGE / IC_MODE
+# ic_parse_common <args...> -> IC_TARGET / IC_PACKAGE
+# --mode is retired (D-13 as amended: copy-only). `--mode copy` is accepted as a
+# no-op for compatibility; `--mode symlink` gets a specific error rather than a
+# generic unknown-arg, because it used to be the documented dev-loop flag.
 ic_parse_common() {
   IC_TARGET=""; IC_PACKAGE=""; IC_MODE="copy"
   while [ $# -gt 0 ]; do
@@ -154,35 +156,82 @@ ic_parse_common() {
       --target=*)   IC_TARGET="${1#*=}"; shift ;;
       --package)    IC_PACKAGE="${2:-}"; shift 2 ;;
       --package=*)  IC_PACKAGE="${1#*=}"; shift ;;
-      --mode)       IC_MODE="${2:-}"; shift 2 ;;
-      --mode=*)     IC_MODE="${1#*=}"; shift ;;
+      --mode)       _ic_check_mode "${2:-}" || return 2; shift 2 ;;
+      --mode=*)     _ic_check_mode "${1#*=}" || return 2; shift ;;
       *) echo "unknown argument: $1" >&2; return 2 ;;
     esac
   done
   [ -n "$IC_TARGET" ] || { echo "--target <dir> is required" >&2; return 2; }
 }
 
+_ic_check_mode() {
+  case "${1:-}" in
+    copy) return 0 ;;
+    symlink) echo "symlink mode removed; installs are copy-only" >&2; return 1 ;;
+    *) echo "unknown --mode: ${1:-} (installs are copy-only)" >&2; return 1 ;;
+  esac
+}
+
 # ic_expand_selection <token> -> ordered canonical package names (one per line)
 ic_expand_selection() {
   case "${1:-}" in
-    all) printf 'agentic-core\nagentic-engineer\nagentic-management\n' ;;
+    all) printf 'agentic-core\nagentic-engineer\nagentic-init\nagentic-ba\nagentic-pm\n' ;;
     *)   ic_pkg_fullname "$1" ;;
   esac
 }
 
-# ic_menu -> read a 1-4 choice from stdin, echo the selection token
+# ic_pkg_deps <name-any> -> direct dependencies, one canonical name per line
+# (empty for agentic-core). Returns 1 on unknown name. This is the single
+# declarative dependency map -- install/update both resolve through it.
+ic_pkg_deps() {
+  local name
+  name="$(ic_pkg_fullname "${1:-}")" || return 1
+  case "$name" in
+    agentic-core)       : ;;
+    agentic-engineer)   printf 'agentic-core\n' ;;
+    agentic-init)       printf 'agentic-core\n' ;;
+    agentic-ba)         printf 'agentic-core\n' ;;
+    agentic-pm)         printf 'agentic-core\nagentic-engineer\n' ;;
+  esac
+}
+
+# ic_with_deps <names...> -> the transitive closure of the selection in
+# dependency order (every package appears after everything it depends on),
+# deduped. Depth-first post-order: emit a package's deps before the package.
+ic_with_deps() {
+  local out="" name
+  _icwd_visit() {
+    local n d
+    n="$(ic_pkg_fullname "$1")" || return 1
+    case "
+$out" in *"
+$n"*) return 0 ;; esac          # already emitted
+    while IFS= read -r d; do
+      [ -n "$d" ] || continue
+      _icwd_visit "$d" || return 1
+    done <<< "$(ic_pkg_deps "$n")"
+    out="$out
+$n"
+  }
+  for name in "$@"; do _icwd_visit "$name" || return 1; done
+  printf '%s\n' "$out" | sed '/^$/d'
+}
+
+# ic_menu -> read a 1-6 choice from stdin, echo the selection token
 ic_menu() {
   {
     echo "Select a package:"
     echo "  1) agentic-core"
     echo "  2) agentic-engineer"
-    echo "  3) agentic-management"
-    echo "  4) all"
-    printf 'Choice [1-4]: '
+    echo "  3) agentic-init"
+    echo "  4) agentic-ba"
+    echo "  5) agentic-pm"
+    echo "  6) all"
+    printf 'Choice [1-6]: '
   } >&2
   local n; read -r n
   case "$n" in
-    1) echo core ;; 2) echo engineer ;; 3) echo management ;; 4) echo all ;;
+    1) echo core ;; 2) echo engineer ;; 3) echo init ;; 4) echo ba ;; 5) echo pm ;; 6) echo all ;;
     *) echo "invalid choice: $n" >&2; return 1 ;;
   esac
 }
